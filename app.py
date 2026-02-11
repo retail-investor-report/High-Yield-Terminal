@@ -158,7 +158,10 @@ def authenticated_dashboard():
                 'COMPANY',
                 'STRATEGY',
                 'CALAMOS',
+                'GRAYSCALE',
                 'INVESCO',
+                'KRANESHARES',
+                'VISTASHARES',
             ]
             
             # Remove explicit bad headers
