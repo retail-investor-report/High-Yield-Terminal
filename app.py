@@ -137,15 +137,34 @@ def authenticated_dashboard():
             if 'Ticker' not in df_m.columns:
                 return None, None
             
-            # 3. Clean Ticker Data & Filter out obvious Headers
+            # 3. Clean Ticker Data & Explicit Denylist
             df_m['Ticker'] = df_m['Ticker'].astype(str).str.strip().str.upper()
             
-            # Regex: Keep only strings that are 1-8 letters/numbers/dashes (no spaces).
-            df_m = df_m[df_m['Ticker'].str.match(r'^[A-Z0-9\-]{1,8}$', na=False)]
+            bad_headers = [
+                'DEFIANCE', 
+                'YIELDMAX', 
+                'ROUNDHILL', 
+                'KURV', 
+                'PROSHARES', 
+                'GLOBALX', 
+                'REX',
+                'TIDAL',
+                'ELEVATE',
+                'SIMPLIFY',
+                'ISHARES',
+                'VANGUARD',
+                'VANECK',
+                'INVESCO',
+                'COMPANY',
+                'STRATEGY',
+                'CALAMOS',
+                'INVESCO',
+            ]
             
-            # Extra safeguard: Manually drop known fund families if they slip through
-            bad_headers = ['DEFIANCE', 'YIELDMAX', 'ROUNDHILL', 'KURV', 'PROSHARES', 'GLOBALX', 'REX']
+            # Remove explicit bad headers
             df_m = df_m[~df_m['Ticker'].isin(bad_headers)]
+            # Remove any entry containing a space
+            df_m = df_m[~df_m['Ticker'].str.contains(' ', na=False)]
                 
             # 4. Clean History Dates
             if 'Date of Pay' in df_h_sheet.columns and 'Ticker' in df_h_sheet.columns:
@@ -182,7 +201,7 @@ def authenticated_dashboard():
             prices['Ticker'] = ticker
             prices['Date'] = pd.to_datetime(prices['Date']).dt.tz_localize(None)
             
-            # Attach Metadata Safely (Checking for NaNs)
+            # Attach Metadata Safely
             meta = df_m[df_m['Ticker'] == ticker]
             if not meta.empty:
                 for col in ['Strategy', 'Company', 'Underlying']:
@@ -196,7 +215,7 @@ def authenticated_dashboard():
                         prices[col] = '-'
             prices['Closing Price'] = pd.to_numeric(prices['Closing Price'], errors='coerce').fillna(0.0)
             
-            # Build Dividends
+            # Build Dividends (Matching YF Amount to Sheet Pay Date)
             final_history = []
             if 'Dividends' in hist.columns:
                 divs = hist[hist['Dividends'] > 0][['Date', 'Dividends']].copy()
@@ -208,6 +227,7 @@ def authenticated_dashboard():
                     
                     for j, yf_row in enumerate(divs.itertuples()):
                         amt = yf_row.Dividends
+                        # Use Sheet Pay Date if available, fallback to YF Ex-Date
                         pay_date = sheet_dates.iloc[j]['Date of Pay'] if j < len(sheet_dates) else yf_row.YF_Ex_Date
                         final_history.append({'Date of Pay': pay_date, 'Ticker': ticker, 'Amount': amt})
             
@@ -420,7 +440,17 @@ def authenticated_dashboard():
                     if not t_journey.empty:
                         fig.add_trace(go.Scatter(x=t_journey['Date'], y=t_journey['True_Value'], mode='lines', name=und, line=dict(color='#FFD700', width=2, dash='dash')))
                         
-        fig.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=340, margin=dict(l=0, r=0, t=20, b=0), showlegend=False, hovermode="x unified", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
+        fig.update_layout(
+            template="plotly_dark", 
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)', 
+            height=340, 
+            margin=dict(l=0, r=0, t=20, b=0), 
+            showlegend=False, 
+            hovermode="x unified", 
+            xaxis=dict(fixedrange=True), 
+            yaxis=dict(fixedrange=True)
+        )
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
         
         st.markdown('<div style="background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 5px 8px; text-align: center;"><span style="color: #00C805; font-weight: 800;">💚 True Value (Total Equity)</span> &nbsp;&nbsp; <span style="color: #8AC7DE; font-weight: 800;">🔵 Price Appreciation</span> &nbsp;&nbsp; <span style="color: #FF4B4B; font-weight: 800;">🔴 Price Erosion</span></div>', unsafe_allow_html=True)
@@ -492,7 +522,18 @@ def authenticated_dashboard():
                     comp_data.append(data_row)
         
         fig_comp.add_hline(y=0, line_dash="solid", line_color="white", opacity=0.5, annotation_text="Break Even")
-        fig_comp.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=400, margin=dict(l=0, r=0, t=30, b=0), hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="white")), yaxis_title="Total Return (%)", xaxis=dict(fixedrange=True), yaxis=dict(fixedrange=True))
+        fig_comp.update_layout(
+            template="plotly_dark", 
+            paper_bgcolor='rgba(0,0,0,0)', 
+            plot_bgcolor='rgba(0,0,0,0)', 
+            height=400, 
+            margin=dict(l=0, r=0, t=30, b=0), 
+            hovermode="x unified", 
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(color="white")), 
+            yaxis_title="Total Return (%)", 
+            xaxis=dict(fixedrange=True), 
+            yaxis=dict(fixedrange=True)
+        )
         st.plotly_chart(fig_comp, use_container_width=True, config={'displayModeBar': False})
         
         if comp_data:
