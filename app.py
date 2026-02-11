@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import yfinance as yf
-import threading
 
 # --- 1. PAGE CONFIGURATION (MUST BE FIRST) ---
 st.set_page_config(
@@ -11,15 +10,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-LOGIN_BG_COLOR = "#1E293B"
-LOGIN_TEXT_COLOR = "#E6EDF3"
-
 # ==========================================
 # 🔧 GLOBAL HELPER FUNCTIONS
 # ==========================================
 @st.cache_data(ttl=3600)
 def fetch_overlay_data(ticker, start_date, end_date):
-    """Fetches historical data for underlying assets (SPY, AAPL, etc.) using yfinance."""
+    """Fetches historical data for underlying assets using yfinance."""
     try:
         ticker_obj = yf.Ticker(ticker)
         hist = ticker_obj.history(
@@ -194,19 +190,6 @@ def authenticated_dashboard():
             
         except Exception:
             return pd.DataFrame(), pd.DataFrame()
-
-    # --- THE BACKGROUND PRE-LOADER ---
-    def preload_all_tickers():
-        """Quietly loops through all tickers and calls the fetch function.
-        Because fetch_single_asset has @st.cache_data, this populates the cache."""
-        for t in all_tickers:
-            fetch_single_asset(t)
-            
-    # Trigger the background thread if it hasn't run yet this session
-    if 'preloader_started' not in st.session_state:
-        st.session_state.preloader_started = True
-        # Start the preloading quietly in the background
-        threading.Thread(target=preload_all_tickers, daemon=True).start()
 
     # --- COMPOUNDING ENGINE ---
     def calculate_journey(ticker, start_date, end_date, initial_shares, drip_enabled, unified_df, history_df):
