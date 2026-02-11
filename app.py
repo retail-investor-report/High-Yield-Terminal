@@ -122,12 +122,32 @@ def authenticated_dashboard():
             h_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQe4koGj386xkUGn3XXhysM-54_DIbYawunKX49C2Kt6KH9i097JDNnhbKQpRVn7WH05noFpgY3p1_e/pub?gid=970184313&single=true&output=csv"
             m_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQe4koGj386xkUGn3XXhysM-54_DIbYawunKX49C2Kt6KH9i097JDNnhbKQpRVn7WH05noFpgY3p1_e/pub?gid=618318322&single=true&output=csv"
             
-            df_m = pd.read_csv(m_url).rename(columns={'Fund Strategy': 'Strategy', 'Asset Class': 'Strategy', 'Fund Name': 'Company', 'Name': 'Company'})
-            df_h_sheet = pd.read_csv(h_url).rename(columns={'Pay Date': 'Date of Pay', 'Payment Date': 'Date of Pay', 'Payout Date': 'Date of Pay', 'Date': 'Date of Pay'})
+            df_m = pd.read_csv(m_url)
+            df_h_sheet = pd.read_csv(h_url)
+            
+            # 1. Clean invisible spaces off column headers
+            df_m.columns = df_m.columns.str.strip()
+            df_h_sheet.columns = df_h_sheet.columns.str.strip()
+            
+            # 2. Rename mapped columns
+            m_rename_map = {'Fund Strategy': 'Strategy', 'Asset Class': 'Strategy', 'Fund Name': 'Company', 'Name': 'Company'}
+            df_m = df_m.rename(columns=m_rename_map)
+            df_h_sheet = df_h_sheet.rename(columns={'Pay Date': 'Date of Pay', 'Payment Date': 'Date of Pay', 'Payout Date': 'Date of Pay', 'Date': 'Date of Pay'})
             
             if 'Ticker' not in df_m.columns:
                 return None, None
+            
+            # 3. Clean Ticker Data & Filter out obvious Headers
+            df_m['Ticker'] = df_m['Ticker'].astype(str).str.strip().str.upper()
+            
+            # Regex: Keep only strings that are 1-8 letters/numbers/dashes (no spaces).
+            df_m = df_m[df_m['Ticker'].str.match(r'^[A-Z0-9\-]{1,8}$', na=False)]
+            
+            # Extra safeguard: Manually drop known fund families if they slip through
+            bad_headers = ['DEFIANCE', 'YIELDMAX', 'ROUNDHILL', 'KURV', 'PROSHARES', 'GLOBALX', 'REX']
+            df_m = df_m[~df_m['Ticker'].isin(bad_headers)]
                 
+            # 4. Clean History Dates
             if 'Date of Pay' in df_h_sheet.columns and 'Ticker' in df_h_sheet.columns:
                 df_h_sheet['Date of Pay'] = pd.to_datetime(df_h_sheet['Date of Pay']).dt.tz_localize(None)
                 df_h_sheet['Ticker'] = df_h_sheet['Ticker'].astype(str).str.strip().str.upper()
@@ -144,7 +164,7 @@ def authenticated_dashboard():
     if df_m is None:
         st.stop()
 
-    all_tickers = sorted(df_m['Ticker'].dropna().astype(str).str.strip().str.upper().unique())
+    all_tickers = sorted(df_m['Ticker'].unique())
 
     # --- PHASE 2: LAZY LOAD A SPECIFIC TICKER ---
     @st.cache_data(ttl=3600)
@@ -162,12 +182,18 @@ def authenticated_dashboard():
             prices['Ticker'] = ticker
             prices['Date'] = pd.to_datetime(prices['Date']).dt.tz_localize(None)
             
-            # Attach Metadata
+            # Attach Metadata Safely (Checking for NaNs)
             meta = df_m[df_m['Ticker'] == ticker]
             if not meta.empty:
                 for col in ['Strategy', 'Company', 'Underlying']:
                     if col in meta.columns:
-                        prices[col] = meta.iloc[0][col]
+                        val = meta.iloc[0][col]
+                        if pd.isna(val) or str(val).strip() == '' or str(val).lower() == 'nan':
+                            prices[col] = '-'
+                        else:
+                            prices[col] = val
+                    else:
+                        prices[col] = '-'
             prices['Closing Price'] = pd.to_numeric(prices['Closing Price'], errors='coerce').fillna(0.0)
             
             # Build Dividends
